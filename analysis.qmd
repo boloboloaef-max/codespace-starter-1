@@ -1,0 +1,52 @@
+```{r}
+con <- DBI::dbConnect(
+  duckdb::duckdb(),
+  "data/atus.duckdb",
+  read_only = TRUE
+)
+
+hourly_avg <- dplyr::tbl(con, "atus") |>
+  dplyr::filter(
+    telfs == "Not in labor force",
+    day_type == "Weekday",
+    start_hour >= 6,
+    start_hour <= 23,
+    category %in% c(
+      "Sleeping",
+      "Personal Care",
+      "Eating and Drinking",
+      "Socializing and Leisure"
+    )
+  ) |>
+  dplyr::group_by(start_hour, sex, category) |>
+  dplyr::summarise(
+    avg_minutes = mean(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(start_hour, sex, category) |>
+  dplyr::collect()
+
+print(hourly_avg)
+DBI::dbDisconnect(con, shutdown = TRUE)
+```
+
+```{r}
+activity_avg |>
+  dplyr::filter(category != "Data Codes") |>
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = avg_minutes,
+      y = forcats::fct_reorder(category, avg_minutes, .fun = mean),
+      fill = sex
+    )
+  ) +
+  ggplot2::geom_col(position = "dodge") +
+  ggplot2::labs(
+    title = "Average Daily Time Spent by Activity",
+    subtitle = "Mean minutes per day, grouped by sex",
+    x = "Average daily minutes",
+    y = "Activity category",
+    fill = "Sex",
+    caption = "Source: American Time Use Survey (ATUS)"
+  )
+```
