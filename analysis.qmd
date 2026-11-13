@@ -13,3 +13,77 @@ library(tidyverse)
 library(purrr)
 library(leaflet)
 library(jsonlite)
+```
+
+```{r}
+raw <- jsonlite::read_json(
+  "data/wildfires.geojson",
+  simplifyVector = FALSE
+)
+
+length(raw$features)
+```
+
+```{r}
+first_fire <- raw$features[[1]]
+print(names(first_fire))
+raw$features[[1]]$geometry$coordinates[[1]][[1]]
+```
+
+```{r}
+#| cache: true
+fires <- tibble(features = raw$features) |>
+  unnest_wider(features) |>
+  unnest_wider(properties) |>
+  unnest_wider(geometry, names_sep = "_") |>
+  select(incident, gis_acres, fire_year, agency, state, geometry_coordinates) |>
+  mutate(
+    gis_acres = as.numeric(gis_acres),
+    fire_year = as.integer(fire_year)
+  )
+```
+
+```{r}
+big_fires <- fires |>
+  filter(gis_acres >= 100000) |>
+  mutate(
+    lon = map_dbl(
+      geometry_coordinates,
+      ~ mean(map_dbl(.x[[1]], 1))
+    ),
+    lat = map_dbl(
+      geometry_coordinates,
+      ~ mean(map_dbl(.x[[1]], 2))
+    )
+  )
+```
+
+```{r}
+top10 <- big_fires |>
+  slice_max(gis_acres, n = 10)
+
+m <- leaflet() |>
+  addTiles()
+
+for (i in seq_len(nrow(top10))) {
+  m <- m |>
+    addPolygons(
+      lng = map_dbl(top10$geometry_coordinates[[i]][[1]], 1),
+      lat = map_dbl(top10$geometry_coordinates[[i]][[1]], 2),
+      color = "firebrick",
+      fillOpacity = 0.5,
+      weight = 1,
+      popup = paste0(
+        top10$incident[i],
+        " (",
+        top10$fire_year[i],
+        "): ",
+        scales::comma(top10$gis_acres[i]),
+        " acres"
+      )
+    )
+}
+
+m |>
+  setView(lng = -114, lat = 41, zoom = 5)
+```
